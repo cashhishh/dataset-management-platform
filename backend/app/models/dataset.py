@@ -28,13 +28,19 @@ class DatasetModel:
         """
         query = """
         INSERT INTO datasets (name, description, user_id, file_path)
-        VALUES (%s, %s, %s, %s)
-        RETURNING id, name, description, user_id, file_path, created_at;
+        VALUES (?, ?, ?, ?);
         """
         
         try:
             with get_db_cursor(commit=True) as cursor:
                 cursor.execute(query, (name, description, user_id, file_path))
+                dataset_id = cursor.lastrowid
+                
+                # Fetch the created dataset
+                cursor.execute(
+                    "SELECT id, name, description, user_id, file_path, created_at FROM datasets WHERE id = ?",
+                    (dataset_id,)
+                )
                 result = cursor.fetchone()
                 
                 if result:
@@ -64,7 +70,7 @@ class DatasetModel:
         query = """
         SELECT id, name, description, user_id, file_path, created_at
         FROM datasets
-        WHERE user_id = %s
+        WHERE user_id = ?
         ORDER BY created_at DESC;
         """
         
@@ -140,7 +146,7 @@ class DatasetModel:
         query = """
         SELECT id, name, description, user_id, file_path, created_at
         FROM datasets
-        WHERE id = %s;
+        WHERE id = ?;
         """
         
         try:
@@ -175,7 +181,7 @@ class DatasetModel:
         """
         query = """
         DELETE FROM datasets
-        WHERE id = %s AND user_id = %s;
+        WHERE id = ? AND user_id = ?;
         """
         
         try:

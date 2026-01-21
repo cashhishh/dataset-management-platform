@@ -56,7 +56,7 @@ app = FastAPI(
 )
 
 # CORS configuration - adjust for production
-aapp.add_middleware(
+app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=False,

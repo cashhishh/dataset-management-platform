@@ -7,6 +7,11 @@ __pycache__/
 venv/
 .env.*
 
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
 # OS
 .DS_Store
 Thumbs.db
@@ -17,3 +22,7 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Node
+node_modules/
+frontend/node_modules/

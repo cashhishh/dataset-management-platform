@@ -1,64 +1,54 @@
 """
 Database connection and initialization module.
-Manages PostgreSQL connection pool and schema creation.
+Manages SQLite connection and schema creation.
 """
-import psycopg2
-from psycopg2.pool import SimpleConnectionPool
+import sqlite3
 from contextlib import contextmanager
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
-# Database configuration - DEV ONLY
-DB_CONFIG = {
-    "host": "localhost",
-    "port": 5432,
-    "database": "dataset_platform",
-    "user": "postgres",
-    "password": "postgres"  # DEV ONLY – move to env var in production
-}
+# Database configuration - SQLite for local development
+DB_PATH = "sqlite:///./dataset_platform.db"
+DB_FILE = "./dataset_platform.db"
 
-# Connection pool
-connection_pool = None
+# Thread-local storage for SQLite connections
+_thread_local = threading.local()
 
 
 def init_db_pool(min_conn=1, max_conn=10):
     """
-    Initialize PostgreSQL connection pool.
+    Initialize database (SQLite doesn't need connection pool initialization).
+    This function is kept for API compatibility.
     """
-    global connection_pool
-    try:
-        connection_pool = SimpleConnectionPool(
-            min_conn,
-            max_conn,
-            **DB_CONFIG
-        )
-        logger.info("Database connection pool created successfully")
-    except Exception as e:
-        logger.error(f"Error creating connection pool: {e}")
-        raise
+    logger.info("Using SQLite database (connection pool not needed)")
+    # Create database file and tables if they don't exist
+    create_tables()
 
 
 @contextmanager
 def get_db_connection():
     """
     Context manager for database connections.
+    SQLite uses thread-local connections for thread safety.
     """
-    if connection_pool is None:
-        raise RuntimeError("Database connection pool is not initialized")
-
-    conn = None
+    # Get or create connection for this thread
+    if not hasattr(_thread_local, 'connection') or _thread_local.connection is None:
+        _thread_local.connection = sqlite3.connect(
+            DB_FILE,
+            check_same_thread=False,
+            timeout=30.0
+        )
+        _thread_local.connection.row_factory = sqlite3.Row
+    
+    conn = _thread_local.connection
     try:
-        conn = connection_pool.getconn()
         yield conn
     except Exception as e:
-        if conn:
-            conn.rollback()
+        conn.rollback()
         logger.error(f"Database error: {e}")
         raise
-    finally:
-        if conn:
-            connection_pool.putconn(conn)
 
 
 @contextmanager
@@ -82,10 +72,11 @@ def get_db_cursor(commit=False):
 def create_tables():
     """
     Create database tables if they don't exist.
+    SQLite syntax: AUTOINCREMENT instead of SERIAL.
     """
     users_table = """
     CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
         email VARCHAR(255) UNIQUE NOT NULL,
         username VARCHAR(100) UNIQUE NOT NULL,
         hashed_password VARCHAR(255) NOT NULL,
@@ -97,7 +88,7 @@ def create_tables():
 
     datasets_table = """
     CREATE TABLE IF NOT EXISTS datasets (
-        id SERIAL PRIMARY KEY,
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
         name VARCHAR(255) NOT NULL,
         description TEXT,
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -125,9 +116,9 @@ def create_tables():
 
 def close_db_pool():
     """
-    Close all connections in the pool.
+    Close database connection.
     """
-    global connection_pool
-    if connection_pool:
-        connection_pool.closeall()
-        logger.info("Database connection pool closed")
+    if hasattr(_thread_local, 'connection') and _thread_local.connection:
+        _thread_local.connection.close()
+        _thread_local.connection = None
+        logger.info("Database connection closed")

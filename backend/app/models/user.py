@@ -31,13 +31,19 @@ class UserModel:
         
         query = """
         INSERT INTO users (email, username, hashed_password, role)
-        VALUES (%s, %s, %s, %s)
-        RETURNING id, email, username, role, created_at;
+        VALUES (?, ?, ?, ?);
         """
         
         try:
             with get_db_cursor(commit=True) as cursor:
                 cursor.execute(query, (email, username, hashed_pwd, role))
+                user_id = cursor.lastrowid
+                
+                # Fetch the created user
+                cursor.execute(
+                    "SELECT id, email, username, role, created_at FROM users WHERE id = ?",
+                    (user_id,)
+                )
                 result = cursor.fetchone()
                 
                 if result:
@@ -66,7 +72,7 @@ class UserModel:
         query = """
         SELECT id, email, username, hashed_password, role, created_at
         FROM users
-        WHERE email = %s;
+        WHERE email = ?;
         """
         
         try:
@@ -88,6 +94,41 @@ class UserModel:
             return None
     
     @staticmethod
+    def get_user_by_username(username: str) -> Optional[Dict]:
+        """
+        Retrieve user by username.
+        
+        Args:
+            username: User's username
+        
+        Returns:
+            Dictionary with user data including hashed password
+        """
+        query = """
+        SELECT id, email, username, hashed_password, role, created_at
+        FROM users
+        WHERE username = ?;
+        """
+        
+        try:
+            with get_db_cursor() as cursor:
+                cursor.execute(query, (username,))
+                result = cursor.fetchone()
+                
+                if result:
+                    return {
+                        "id": result[0],
+                        "email": result[1],
+                        "username": result[2],
+                        "hashed_password": result[3],
+                        "role": result[4],
+                        "created_at": result[5]
+                    }
+        except Exception as e:
+            logger.error(f"Error fetching user by username: {e}")
+            return None
+    
+    @staticmethod
     def get_user_by_id(user_id: int) -> Optional[Dict]:
         """
         Retrieve user by ID.
@@ -101,7 +142,7 @@ class UserModel:
         query = """
         SELECT id, email, username, role, created_at
         FROM users
-        WHERE id = %s;
+        WHERE id = ?;
         """
         
         try:
@@ -134,10 +175,10 @@ class UserModel:
             True if user exists, False otherwise
         """
         if email:
-            query = "SELECT EXISTS(SELECT 1 FROM users WHERE email = %s);"
+            query = "SELECT COUNT(*) FROM users WHERE email = ?;"
             param = (email,)
         elif username:
-            query = "SELECT EXISTS(SELECT 1 FROM users WHERE username = %s);"
+            query = "SELECT COUNT(*) FROM users WHERE username = ?;"
             param = (username,)
         else:
             return False
@@ -145,7 +186,7 @@ class UserModel:
         try:
             with get_db_cursor() as cursor:
                 cursor.execute(query, param)
-                return cursor.fetchone()[0]
+                return cursor.fetchone()[0] > 0
         except Exception as e:
             logger.error(f"Error checking user existence: {e}")
             return False

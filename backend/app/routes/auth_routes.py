@@ -2,7 +2,7 @@
 Authentication routes for user registration and login.
 Provides JWT-based authentication endpoints.
 """
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import logging
 
@@ -59,7 +59,7 @@ async def register(user_data: UserRegister):
 
 
 @router.post("/login", response_model=Token)
-async def login(credentials: UserLogin):
+async def login(credentials: UserLogin, response: Response):
     """
     Authenticate user and return JWT token.
     """
@@ -79,6 +79,11 @@ async def login(credentials: UserLogin):
     }
 
     access_token = create_access_token(token_payload)
+
+    # Prevent response caching
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
 
     logger.info(f"User logged in: {user['email']}")
     return {

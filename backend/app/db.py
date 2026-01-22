@@ -1,61 +1,79 @@
 """
 Database connection and initialization module.
-Manages SQLite connection and schema creation.
+Manages SQLite connection, schema creation, and safe migration.
 """
+
 import sqlite3
 from contextlib import contextmanager
 import logging
 import threading
+import os
 
 logger = logging.getLogger(__name__)
 
-# Database configuration - SQLite for local development
-DB_PATH = "sqlite:///./dataset_platform.db"
+# ✅ SINGLE SQLite database file
 DB_FILE = "./dataset_platform.db"
 
-# Thread-local storage for SQLite connections
+# Thread-local storage
 _thread_local = threading.local()
 
 
-def init_db_pool(min_conn=1, max_conn=10):
+def init_db_pool(min_conn=None, max_conn=None):
     """
-    Initialize database (SQLite doesn't need connection pool initialization).
-    This function is kept for API compatibility.
+    Initialize SQLite database.
+
+    min_conn / max_conn are accepted ONLY for compatibility.
+    SQLite does not use connection pools.
     """
-    logger.info("Using SQLite database (connection pool not needed)")
-    # Create database file and tables if they don't exist
+    logger.info("=" * 60)
+    logger.info("DATABASE INITIALIZATION")
+    logger.info("=" * 60)
+    logger.info("Database engine: SQLite")
+    logger.info(f"Database file: {DB_FILE}")
+
+    if os.path.exists(DB_FILE):
+        logger.info("Database file exists")
+    else:
+        logger.info("Database file will be created")
+
+    # Create base tables
     create_tables()
+
+    # Run safe migration
+    run_migration()
+
+    logger.info("Database initialization complete")
+    logger.info("=" * 60)
 
 
 @contextmanager
 def get_db_connection():
     """
-    Context manager for database connections.
-    SQLite uses thread-local connections for thread safety.
+    Thread-safe SQLite connection with foreign keys enabled.
     """
-    # Get or create connection for this thread
-    if not hasattr(_thread_local, 'connection') or _thread_local.connection is None:
-        _thread_local.connection = sqlite3.connect(
+    if not hasattr(_thread_local, "connection") or _thread_local.connection is None:
+        conn = sqlite3.connect(
             DB_FILE,
             check_same_thread=False,
-            timeout=30.0
+            timeout=30
         )
-        _thread_local.connection.row_factory = sqlite3.Row
-    
-    conn = _thread_local.connection
+        conn.row_factory = sqlite3.Row
+
+        # 🔥 REQUIRED for SQLite
+        conn.execute("PRAGMA foreign_keys = ON;")
+
+        _thread_local.connection = conn
+
     try:
-        yield conn
+        yield _thread_local.connection
     except Exception as e:
-        conn.rollback()
+        _thread_local.connection.rollback()
         logger.error(f"Database error: {e}")
         raise
 
 
 @contextmanager
-def get_db_cursor(commit=False):
-    """
-    Context manager for database cursors with automatic commit/rollback.
-    """
+def get_db_cursor(commit: bool = False):
     with get_db_connection() as conn:
         cursor = conn.cursor()
         try:
@@ -70,55 +88,99 @@ def get_db_cursor(commit=False):
 
 
 def create_tables():
-    """
-    Create database tables if they don't exist.
-    SQLite syntax: AUTOINCREMENT instead of SERIAL.
-    """
+    logger.info("Creating/verifying database tables...")
+
     users_table = """
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        email VARCHAR(255) UNIQUE NOT NULL,
-        username VARCHAR(100) UNIQUE NOT NULL,
-        hashed_password VARCHAR(255) NOT NULL,
-        role VARCHAR(20) NOT NULL DEFAULT 'user',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        email TEXT UNIQUE NOT NULL,
+        username TEXT UNIQUE NOT NULL,
+        hashed_password TEXT NOT NULL,
+        role TEXT DEFAULT 'user',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """
 
     datasets_table = """
     CREATE TABLE IF NOT EXISTS datasets (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name VARCHAR(255) NOT NULL,
+        name TEXT NOT NULL,
         description TEXT,
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        file_path VARCHAR(500),
+        user_id INTEGER NOT NULL,
+        file_path TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
     """
 
-    user_id_index = """
-    CREATE INDEX IF NOT EXISTS idx_datasets_user_id 
-    ON datasets(user_id);
-    """
+    with get_db_cursor(commit=True) as cursor:
+        cursor.execute(users_table)
+        cursor.execute(datasets_table)
 
-    try:
-        with get_db_cursor(commit=True) as cursor:
-            cursor.execute(users_table)
-            cursor.execute(datasets_table)
-            cursor.execute(user_id_index)
-            logger.info("Database tables created successfully")
-    except Exception as e:
-        logger.error(f"Error creating tables: {e}")
-        raise
+    logger.info("✓ Base tables ready")
+
+
+# ============================
+# SAFE AUTO MIGRATION
+# ============================
+
+def run_migration():
+    logger.info("Running database migration...")
+
+    with get_db_cursor(commit=True) as cursor:
+        existing_columns = get_columns(cursor, "datasets")
+
+        add_column(cursor, existing_columns, "datasets", "file_name", "TEXT")
+        add_column(cursor, existing_columns, "datasets", "file_size", "INTEGER")
+        add_column(cursor, existing_columns, "datasets", "row_count", "INTEGER")
+        add_column(cursor, existing_columns, "datasets", "column_count", "INTEGER")
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS dataset_columns (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            dataset_id INTEGER NOT NULL,
+            column_name TEXT NOT NULL,
+            column_type TEXT,
+            column_index INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (dataset_id) REFERENCES datasets(id) ON DELETE CASCADE
+        );
+        """)
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS quality_reports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            dataset_id INTEGER NOT NULL,
+            total_rows INTEGER,
+            total_columns INTEGER,
+            duplicate_rows INTEGER,
+            null_counts TEXT,
+            completeness_score REAL,
+            generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (dataset_id) REFERENCES datasets(id) ON DELETE CASCADE
+        );
+        """)
+
+    logger.info("✓ Migration complete")
+
+
+def get_columns(cursor, table_name: str) -> set:
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    return {row[1] for row in cursor.fetchall()}
+
+
+def add_column(cursor, existing_cols, table, column, col_type):
+    if column not in existing_cols:
+        logger.info(f"Adding column: {table}.{column}")
+        cursor.execute(
+            f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"
+        )
+    else:
+        logger.info(f"Column exists: {table}.{column}")
 
 
 def close_db_pool():
-    """
-    Close database connection.
-    """
-    if hasattr(_thread_local, 'connection') and _thread_local.connection:
+    if hasattr(_thread_local, "connection") and _thread_local.connection:
         _thread_local.connection.close()
         _thread_local.connection = None
         logger.info("Database connection closed")

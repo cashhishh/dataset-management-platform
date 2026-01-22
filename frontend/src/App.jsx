@@ -1,30 +1,39 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { AuthProvider } from './contexts/AuthContext'
 import Landing from './pages/Landing'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import Dashboard from './pages/Dashboard'
 import Datasets from './pages/Datasets'
+import DatasetDetail from './pages/DatasetDetail'
 import ProtectedRoute from './components/ProtectedRoute'
 
 function App() {
   return (
-    <Router>
-      <Routes>
-        <Route path="/" element={<Landing />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/dashboard" element={
-          <ProtectedRoute>
-            <Dashboard />
-          </ProtectedRoute>
-        } />
-        <Route path="/datasets" element={
-          <ProtectedRoute>
-            <Datasets />
-          </ProtectedRoute>
-        } />
-      </Routes>
-    </Router>
+    <AuthProvider>
+      <Router>
+        <Routes>
+          <Route path="/" element={<Landing />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/dashboard" element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/datasets" element={
+            <ProtectedRoute>
+              <Datasets />
+            </ProtectedRoute>
+          } />
+          <Route path="/datasets/:id" element={
+            <ProtectedRoute>
+              <DatasetDetail />
+            </ProtectedRoute>
+          } />
+        </Routes>
+      </Router>
+    </AuthProvider>
   )
 }
 

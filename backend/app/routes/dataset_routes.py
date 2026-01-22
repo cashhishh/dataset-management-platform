@@ -2,13 +2,24 @@
 Dataset management routes with role-based access control.
 Users can only manage their own datasets, admins can view all.
 """
-from fastapi import APIRouter, HTTPException, status, Depends
-from typing import List, Union
-from app.schemas.user import DatasetCreate, DatasetResponse, DatasetResponseWithOwner
+
+from fastapi import APIRouter, HTTPException, status, Depends, UploadFile, File, Form
+from typing import List, Union, Optional
+import logging
+
+from app.schemas.dataset_schemas import (
+    DatasetCreate,
+    DatasetResponse,
+    DatasetWithOwner,
+    DatasetDetail,
+    DatasetPreview,
+    QualityReport
+)
 from app.schemas.auth import TokenData
 from app.models.dataset import DatasetModel
 from app.routes.auth_routes import get_current_user, require_admin
-import logging
+from app.services.file_service import save_upload_file, delete_file
+from app.services.csv_parser import CSVParser
 
 logger = logging.getLogger(__name__)
 
@@ -20,47 +31,107 @@ async def create_dataset(
     dataset_data: DatasetCreate,
     current_user: TokenData = Depends(get_current_user)
 ):
-    """
-    Create a new dataset.
-    
-    - Authenticated users can create datasets
-    - Dataset is automatically linked to the creating user
-    """
     dataset = DatasetModel.create_dataset(
         name=dataset_data.name,
         description=dataset_data.description,
-        user_id=current_user.user_id,
-        file_path=dataset_data.file_path
+        user_id=current_user.user_id
     )
-    
+
     if not dataset:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create dataset"
         )
-    
-    logger.info(f"Dataset created: {dataset['name']} by user {current_user.user_id}")
+
     return dataset
 
 
-@router.get("/", response_model=Union[List[DatasetResponse], List[DatasetResponseWithOwner]])
+@router.post("/upload", response_model=DatasetResponse, status_code=status.HTTP_201_CREATED)
+async def upload_dataset(
+    file: UploadFile = File(...),
+    name: str = Form(...),
+    description: Optional[str] = Form(None),
+    current_user: TokenData = Depends(get_current_user)
+):
+    logger.info("=" * 60)
+    logger.info(f"DATASET UPLOAD STARTED - User: {current_user.user_id}, File: {file.filename}")
+    logger.info("=" * 60)
+
+    file_path = None
+    dataset = None
+
+    try:
+        # 1️⃣ Save file
+        file_path, original_filename, file_size = await save_upload_file(
+            file, current_user.user_id
+        )
+
+        # 2️⃣ Parse CSV
+        parse_result = CSVParser.parse_csv_file(file_path)
+        df = parse_result["df"]
+
+        # 3️⃣ Quality analysis
+        quality_data = CSVParser.analyze_data_quality(df)
+
+        # 4️⃣ Create dataset
+        dataset = DatasetModel.create_dataset(
+            name=name,
+            description=description,
+            user_id=current_user.user_id,
+            file_path=file_path,
+            file_name=original_filename,
+            file_size=file_size,
+            row_count=parse_result["row_count"],
+            column_count=parse_result["column_count"],
+        )
+
+        if not dataset:
+            raise RuntimeError("Dataset DB insert failed")
+
+        # 5️⃣ Save column metadata (FAIL = FULL ROLLBACK)
+        if not DatasetModel.save_column_metadata(
+            dataset["id"], parse_result["columns"]
+        ):
+            raise RuntimeError("Column metadata save failed")
+
+        # 6️⃣ Save quality report (FAIL = FULL ROLLBACK)
+        if not DatasetModel.save_quality_report(
+            dataset["id"],
+            quality_data["total_rows"],
+            quality_data["total_columns"],
+            quality_data["duplicate_rows"],
+            quality_data["null_counts"],
+            quality_data["completeness_score"],
+        ):
+            raise RuntimeError("Quality report save failed")
+
+        logger.info("=" * 60)
+        logger.info(f"DATASET UPLOAD COMPLETE - ID: {dataset['id']}")
+        logger.info("=" * 60)
+
+        return dataset
+
+    except Exception as e:
+        logger.error(f"Upload failed: {e}", exc_info=True)
+
+        # 🔥 FULL CLEANUP (CRITICAL FIX)
+        if dataset:
+            DatasetModel.delete_dataset(dataset["id"], current_user.user_id)
+
+        if file_path:
+            delete_file(file_path)
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Dataset upload failed"
+        )
+
+
+@router.get("/", response_model=Union[List[DatasetResponse], List[DatasetWithOwner]])
 async def get_datasets(current_user: TokenData = Depends(get_current_user)):
-    """
-    Get datasets based on user role.
-    
-    - Regular users: See only their own datasets
-    - Admins: See all datasets with owner information
-    """
     if current_user.role == "admin":
-        # Admin sees all datasets with owner info
-        datasets = DatasetModel.get_all_datasets()
-        logger.info(f"Admin {current_user.user_id} retrieved all datasets")
-    else:
-        # Regular users see only their own datasets
-        datasets = DatasetModel.get_datasets_by_user(current_user.user_id)
-        logger.info(f"User {current_user.user_id} retrieved their datasets")
-    
-    return datasets
+        return DatasetModel.get_all_datasets()
+    return DatasetModel.get_datasets_by_user(current_user.user_id)
 
 
 @router.get("/{dataset_id}", response_model=DatasetResponse)
@@ -68,78 +139,80 @@ async def get_dataset(
     dataset_id: int,
     current_user: TokenData = Depends(get_current_user)
 ):
-    """
-    Get a specific dataset by ID.
-    
-    - Users can only access their own datasets
-    - Admins can access any dataset
-    """
     dataset = DatasetModel.get_dataset_by_id(dataset_id)
-    
+
     if not dataset:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Dataset not found"
-        )
-    
-    # Authorization check: users can only access their own datasets
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
     if current_user.role != "admin" and dataset["user_id"] != current_user.user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied: you can only view your own datasets"
-        )
-    
+        raise HTTPException(status_code=403, detail="Access denied")
+
     return dataset
 
 
-@router.delete("/{dataset_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_dataset(
+@router.get("/{dataset_id}/detail", response_model=DatasetDetail)
+async def get_dataset_detail(
     dataset_id: int,
     current_user: TokenData = Depends(get_current_user)
 ):
-    """
-    Delete a dataset.
-    
-    - Users can only delete their own datasets
-    - Admins cannot delete other users' datasets (ownership protection)
-    """
-    # Check if dataset exists
     dataset = DatasetModel.get_dataset_by_id(dataset_id)
-    
     if not dataset:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Dataset not found"
-        )
-    
-    # Authorization: only owner can delete
-    if dataset["user_id"] != current_user.user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied: you can only delete your own datasets"
-        )
-    
-    # Delete dataset
-    success = DatasetModel.delete_dataset(dataset_id, current_user.user_id)
-    
-    if not success:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete dataset"
-        )
-    
-    logger.info(f"Dataset {dataset_id} deleted by user {current_user.user_id}")
-    return None
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    if current_user.role != "admin" and dataset["user_id"] != current_user.user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return {
+        "dataset": dataset,
+        "columns": DatasetModel.get_column_metadata(dataset_id),
+        "quality_report": DatasetModel.get_quality_report(dataset_id),
+    }
 
 
-@router.get("/admin/all", response_model=List[DatasetResponseWithOwner])
-async def get_all_datasets_admin(admin_user: TokenData = Depends(require_admin)):
-    """
-    Admin-only endpoint to view all datasets with owner information.
-    
-    - Requires admin role
-    - Returns comprehensive dataset list with user details
-    """
-    datasets = DatasetModel.get_all_datasets()
-    logger.info(f"Admin {admin_user.user_id} retrieved all datasets via admin endpoint")
-    return datasets
+@router.get("/{dataset_id}/preview", response_model=DatasetPreview)
+async def get_dataset_preview(
+    dataset_id: int,
+    limit: int = 10,
+    current_user: TokenData = Depends(get_current_user)
+):
+    dataset = DatasetModel.get_dataset_by_id(dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    if current_user.role != "admin" and dataset["user_id"] != current_user.user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    rows = CSVParser.get_preview_data(dataset["file_path"], limit)
+    columns = list(rows[0].keys()) if rows else []
+
+    return {
+        "columns": columns,
+        "rows": rows,
+        "total_rows": dataset.get("row_count", 0),
+    }
+
+
+@router.get("/{dataset_id}/quality", response_model=QualityReport)
+async def get_quality_report(
+    dataset_id: int,
+    current_user: TokenData = Depends(get_current_user)
+):
+    dataset = DatasetModel.get_dataset_by_id(dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    if current_user.role != "admin" and dataset["user_id"] != current_user.user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    report = DatasetModel.get_quality_report(dataset_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Quality report not found")
+
+    return report
+
+
+@router.get("/admin/all", response_model=List[DatasetWithOwner])
+async def get_all_datasets_admin(
+    admin_user: TokenData = Depends(require_admin)
+):
+    return DatasetModel.get_all_datasets()

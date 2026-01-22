@@ -10,7 +10,20 @@ api.interceptors.request.use((config) => {
     config.headers.Authorization = `Bearer ${token}`
   }
   return config
+}, (error) => {
+  return Promise.reject(error)
 })
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token')
+      window.location.href = '/login'
+    }
+    return Promise.reject(error)
+  }
+)
 
 export const authAPI = {
   register: (data) => api.post('/auth/register', data),
@@ -21,7 +34,13 @@ export const authAPI = {
 export const datasetAPI = {
   getAll: () => api.get('/datasets/'),
   create: (data) => api.post('/datasets/', data),
+  upload: (formData) => api.post('/datasets/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
   getById: (id) => api.get(`/datasets/${id}`),
+  getDetail: (id) => api.get(`/datasets/${id}/detail`),
+  getPreview: (id, limit = 10) => api.get(`/datasets/${id}/preview`, { params: { limit } }),
+  getQuality: (id) => api.get(`/datasets/${id}/quality`),
   delete: (id) => api.delete(`/datasets/${id}`)
 }
 

@@ -1,193 +1,206 @@
 """
 Dataset model for database operations.
-Handles CRUD operations for datasets with role-based access control.
+Handles CRUD operations for datasets.
 """
+
 from typing import Optional, List, Dict
-from app.db import get_db_cursor
+import json
 import logging
+from app.db import get_db_cursor
 
 logger = logging.getLogger(__name__)
 
 
 class DatasetModel:
     """Dataset model for database operations"""
-    
+
     @staticmethod
-    def create_dataset(name: str, description: str, user_id: int, file_path: str = None) -> Optional[Dict]:
+    def create_dataset(
+        name: str,
+        description: Optional[str],
+        user_id: int,
+        file_path: Optional[str] = None,
+        file_name: Optional[str] = None,
+        file_size: Optional[int] = None,
+        row_count: Optional[int] = None,
+        column_count: Optional[int] = None,
+    ) -> Optional[Dict]:
         """
-        Create a new dataset for a user.
-        
-        Args:
-            name: Dataset name
-            description: Dataset description
-            user_id: Owner's user ID
-            file_path: Optional file path
-        
-        Returns:
-            Dictionary with dataset data if successful, None if failed
+        Create dataset and return created row.
         """
         query = """
-        INSERT INTO datasets (name, description, user_id, file_path)
-        VALUES (?, ?, ?, ?);
+        INSERT INTO datasets
+        (name, description, user_id, file_path, file_name, file_size, row_count, column_count)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?);
         """
-        
+
         try:
             with get_db_cursor(commit=True) as cursor:
-                cursor.execute(query, (name, description, user_id, file_path))
-                dataset_id = cursor.lastrowid
-                
-                # Fetch the created dataset
                 cursor.execute(
-                    "SELECT id, name, description, user_id, file_path, created_at FROM datasets WHERE id = ?",
-                    (dataset_id,)
+                    query,
+                    (
+                        name,
+                        description,
+                        user_id,
+                        file_path,
+                        file_name,
+                        file_size,
+                        row_count,
+                        column_count,
+                    ),
                 )
-                result = cursor.fetchone()
-                
-                if result:
-                    return {
-                        "id": result[0],
-                        "name": result[1],
-                        "description": result[2],
-                        "user_id": result[3],
-                        "file_path": result[4],
-                        "created_at": result[5]
-                    }
+                dataset_id = cursor.lastrowid
+
+                cursor.execute(
+                    """
+                    SELECT id, name, description, user_id, file_path,
+                           file_name, file_size, row_count, column_count,
+                           created_at
+                    FROM datasets
+                    WHERE id = ?
+                    """,
+                    (dataset_id,),
+                )
+
+                row = cursor.fetchone()
+                return dict(row) if row else None
+
         except Exception as e:
-            logger.error(f"Error creating dataset: {e}")
+            logger.error(f"Create dataset failed: {e}", exc_info=True)
             return None
-    
+
     @staticmethod
     def get_datasets_by_user(user_id: int) -> List[Dict]:
-        """
-        Get all datasets owned by a specific user.
-        
-        Args:
-            user_id: Owner's user ID
-        
-        Returns:
-            List of dataset dictionaries
-        """
         query = """
-        SELECT id, name, description, user_id, file_path, created_at
+        SELECT id, name, description, user_id, file_path,
+               file_name, file_size, row_count, column_count,
+               created_at
         FROM datasets
         WHERE user_id = ?
         ORDER BY created_at DESC;
         """
-        
-        try:
-            with get_db_cursor() as cursor:
-                cursor.execute(query, (user_id,))
-                results = cursor.fetchall()
-                
-                return [
-                    {
-                        "id": row[0],
-                        "name": row[1],
-                        "description": row[2],
-                        "user_id": row[3],
-                        "file_path": row[4],
-                        "created_at": row[5]
-                    }
-                    for row in results
-                ]
-        except Exception as e:
-            logger.error(f"Error fetching datasets for user: {e}")
-            return []
-    
+        with get_db_cursor() as cursor:
+            cursor.execute(query, (user_id,))
+            return [dict(row) for row in cursor.fetchall()]
+
     @staticmethod
     def get_all_datasets() -> List[Dict]:
-        """
-        Get all datasets in the system (admin only).
-        
-        Returns:
-            List of all dataset dictionaries with owner info
-        """
         query = """
-        SELECT d.id, d.name, d.description, d.user_id, d.file_path, d.created_at,
-               u.username, u.email
+        SELECT d.id, d.name, d.description, d.user_id, d.file_path,
+               d.file_name, d.file_size, d.row_count, d.column_count,
+               d.created_at, u.username AS owner_username, u.email AS owner_email
         FROM datasets d
         JOIN users u ON d.user_id = u.id
         ORDER BY d.created_at DESC;
         """
-        
-        try:
-            with get_db_cursor() as cursor:
-                cursor.execute(query)
-                results = cursor.fetchall()
-                
-                return [
-                    {
-                        "id": row[0],
-                        "name": row[1],
-                        "description": row[2],
-                        "user_id": row[3],
-                        "file_path": row[4],
-                        "created_at": row[5],
-                        "owner_username": row[6],
-                        "owner_email": row[7]
-                    }
-                    for row in results
-                ]
-        except Exception as e:
-            logger.error(f"Error fetching all datasets: {e}")
-            return []
-    
+        with get_db_cursor() as cursor:
+            cursor.execute(query)
+            return [dict(row) for row in cursor.fetchall()]
+
     @staticmethod
     def get_dataset_by_id(dataset_id: int) -> Optional[Dict]:
-        """
-        Get a specific dataset by ID.
-        
-        Args:
-            dataset_id: Dataset ID
-        
-        Returns:
-            Dataset dictionary if found, None otherwise
-        """
         query = """
-        SELECT id, name, description, user_id, file_path, created_at
+        SELECT id, name, description, user_id, file_path,
+               file_name, file_size, row_count, column_count,
+               created_at
         FROM datasets
         WHERE id = ?;
         """
-        
-        try:
-            with get_db_cursor() as cursor:
-                cursor.execute(query, (dataset_id,))
-                result = cursor.fetchone()
-                
-                if result:
-                    return {
-                        "id": result[0],
-                        "name": result[1],
-                        "description": result[2],
-                        "user_id": result[3],
-                        "file_path": result[4],
-                        "created_at": result[5]
-                    }
-        except Exception as e:
-            logger.error(f"Error fetching dataset by ID: {e}")
-            return None
-    
+        with get_db_cursor() as cursor:
+            cursor.execute(query, (dataset_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
     @staticmethod
     def delete_dataset(dataset_id: int, user_id: int) -> bool:
-        """
-        Delete a dataset (only by owner).
-        
-        Args:
-            dataset_id: Dataset ID to delete
-            user_id: User ID requesting deletion
-        
-        Returns:
-            True if deleted successfully, False otherwise
-        """
-        query = """
-        DELETE FROM datasets
-        WHERE id = ? AND user_id = ?;
-        """
-        
+        query = "DELETE FROM datasets WHERE id = ? AND user_id = ?;"
         try:
             with get_db_cursor(commit=True) as cursor:
                 cursor.execute(query, (dataset_id, user_id))
                 return cursor.rowcount > 0
         except Exception as e:
-            logger.error(f"Error deleting dataset: {e}")
+            logger.error(f"Delete dataset failed: {e}", exc_info=True)
             return False
+
+    @staticmethod
+    def save_column_metadata(dataset_id: int, columns: List[Dict]) -> bool:
+        query = """
+        INSERT INTO dataset_columns
+        (dataset_id, column_name, column_type, column_index)
+        VALUES (?, ?, ?, ?);
+        """
+        try:
+            with get_db_cursor(commit=True) as cursor:
+                for col in columns:
+                    cursor.execute(
+                        query,
+                        (dataset_id, col["name"], col["type"], col["index"]),
+                    )
+            return True
+        except Exception as e:
+            logger.error(f"Save column metadata failed: {e}", exc_info=True)
+            return False
+
+    @staticmethod
+    def get_column_metadata(dataset_id: int) -> List[Dict]:
+        query = """
+        SELECT id, column_name, column_type, column_index
+        FROM dataset_columns
+        WHERE dataset_id = ?
+        ORDER BY column_index;
+        """
+        with get_db_cursor() as cursor:
+            cursor.execute(query, (dataset_id,))
+            return [dict(row) for row in cursor.fetchall()]
+
+    @staticmethod
+    def save_quality_report(
+        dataset_id: int,
+        total_rows: int,
+        total_columns: int,
+        duplicate_rows: int,
+        null_counts: Dict,
+        completeness_score: float,
+    ) -> Optional[int]:
+        query = """
+        INSERT INTO quality_reports
+        (dataset_id, total_rows, total_columns, duplicate_rows, null_counts, completeness_score)
+        VALUES (?, ?, ?, ?, ?, ?);
+        """
+        try:
+            with get_db_cursor(commit=True) as cursor:
+                cursor.execute(
+                    query,
+                    (
+                        dataset_id,
+                        total_rows,
+                        total_columns,
+                        duplicate_rows,
+                        json.dumps(null_counts),
+                        completeness_score,
+                    ),
+                )
+                return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"Save quality report failed: {e}", exc_info=True)
+            return None
+
+    @staticmethod
+    def get_quality_report(dataset_id: int) -> Optional[Dict]:
+        query = """
+        SELECT id, total_rows, total_columns, duplicate_rows,
+               null_counts, completeness_score, generated_at
+        FROM quality_reports
+        WHERE dataset_id = ?
+        ORDER BY generated_at DESC
+        LIMIT 1;
+        """
+        with get_db_cursor() as cursor:
+            cursor.execute(query, (dataset_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+
+            data = dict(row)
+            data["null_counts"] = json.loads(data["null_counts"]) if data["null_counts"] else {}
+            return data

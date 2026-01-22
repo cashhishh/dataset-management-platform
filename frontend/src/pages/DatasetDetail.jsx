@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { datasetAPI } from '../services/api'
 import Footer from '../components/Footer'
+import AdvancedQualityReport from '../components/AdvancedQualityReport'
+import DataProfiling from '../components/DataProfiling'
 
 function DatasetDetail() {
   const { id } = useParams()
@@ -100,6 +102,8 @@ function DatasetDetail() {
     { id: 'overview', label: 'Overview', icon: '📊' },
     { id: 'preview', label: 'Data Preview', icon: '👁️' },
     { id: 'quality', label: 'Quality Report', icon: '✅' },
+    { id: 'advanced-quality', label: 'Advanced Quality', icon: '🔬' },
+    { id: 'profiling', label: 'Data Profiling', icon: '📈' },
     { id: 'schema', label: 'Schema', icon: '📋' }
   ]
 
@@ -361,6 +365,18 @@ function DatasetDetail() {
                 <p className="text-sm text-gray-400 sm:text-base">Quality analysis not available for this dataset</p>
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'advanced-quality' && (
+          <div className="w-full">
+            <AdvancedQualityReport datasetId={id} />
+          </div>
+        )}
+
+        {activeTab === 'profiling' && (
+          <div className="w-full">
+            <DataProfiling datasetId={id} />
           </div>
         )}
 

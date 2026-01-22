@@ -6,6 +6,7 @@ Users can only manage their own datasets, admins can view all.
 from fastapi import APIRouter, HTTPException, status, Depends, UploadFile, File, Form
 from typing import List, Union, Optional
 import logging
+import json
 
 from app.schemas.dataset_schemas import (
     DatasetCreate,
@@ -13,13 +14,17 @@ from app.schemas.dataset_schemas import (
     DatasetWithOwner,
     DatasetDetail,
     DatasetPreview,
-    QualityReport
+    QualityReport,
+    AdvancedQualityReport,
+    ProfilingReport
 )
 from app.schemas.auth import TokenData
 from app.models.dataset import DatasetModel
 from app.routes.auth_routes import get_current_user, require_admin
 from app.services.file_service import save_upload_file, delete_file
 from app.services.csv_parser import CSVParser
+from app.services.quality_analyzer import AdvancedQualityAnalyzer
+from app.services.data_profiler import DataProfiler
 
 logger = logging.getLogger(__name__)
 
@@ -209,6 +214,81 @@ async def get_quality_report(
         raise HTTPException(status_code=404, detail="Quality report not found")
 
     return report
+
+
+@router.get("/{dataset_id}/advanced-quality", response_model=AdvancedQualityReport)
+async def get_advanced_quality_report(
+    dataset_id: int,
+    current_user: TokenData = Depends(get_current_user)
+):
+    """
+    Get advanced quality analysis for a dataset including:
+    - Column-level quality metrics
+    - Outlier detection using IQR method
+    - Type consistency analysis
+    - Invalid value detection
+    - Actionable recommendations
+    """
+    dataset = DatasetModel.get_dataset_by_id(dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    if current_user.role != "admin" and dataset["user_id"] != current_user.user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    try:
+        # Initialize analyzer
+        analyzer = AdvancedQualityAnalyzer()
+        
+        # Get column metadata from database
+        column_metadata = json.loads(dataset.get("columns", "[]"))
+        
+        # Generate comprehensive quality report
+        report = analyzer.generate_advanced_quality_report(
+            file_path=dataset["file_path"],
+            column_metadata=column_metadata
+        )
+        
+        return report
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Dataset file not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error analyzing dataset: {str(e)}")
+
+
+@router.get("/{dataset_id}/profile", response_model=ProfilingReport)
+async def get_dataset_profile(
+    dataset_id: int,
+    current_user: TokenData = Depends(get_current_user)
+):
+    """
+    Get comprehensive data profiling for a dataset including:
+    - Distribution histograms for numeric columns
+    - Frequency counts for categorical columns
+    - Missing value analysis
+    - Outlier detection and visualization data
+    """
+    dataset = DatasetModel.get_dataset_by_id(dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    if current_user.role != "admin" and dataset["user_id"] != current_user.user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    try:
+        # Generate profiling report
+        profiler = DataProfiler()
+        report = profiler.generate_full_profile(
+            file_path=dataset["file_path"],
+            max_columns=50  # Safety limit for large datasets
+        )
+        
+        return report
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Dataset file not found")
+    except Exception as e:
+        logger.error(f"Profiling failed for dataset {dataset_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error profiling dataset: {str(e)}")
 
 
 @router.get("/admin/all", response_model=List[DatasetWithOwner])

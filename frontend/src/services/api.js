@@ -41,6 +41,8 @@ export const datasetAPI = {
   getDetail: (id) => api.get(`/datasets/${id}/detail`),
   getPreview: (id, limit = 10) => api.get(`/datasets/${id}/preview`, { params: { limit } }),
   getQuality: (id) => api.get(`/datasets/${id}/quality`),
+  getAdvancedQuality: (id) => api.get(`/datasets/${id}/advanced-quality`),
+  getProfile: (id) => api.get(`/datasets/${id}/profile`),
   delete: (id) => api.delete(`/datasets/${id}`)
 }
 

@@ -1,0 +1,11 @@
+id,name,age,department,salary,email
+1,John Doe,30,Engineering,75000,john@example.com
+2,Jane Smith,28,Marketing,65000,jane@example.com
+3,Bob Johnson,35,Engineering,85000,bob@example.com
+4,Alice Williams,32,Sales,70000,alice@example.com
+5,Charlie Brown,29,Engineering,72000,charlie@example.com
+6,Diana Davis,31,,68000,diana@example.com
+7,Eve Miller,27,Marketing,,eve@example.com
+8,Frank Wilson,33,Sales,76000,
+9,Grace Lee,30,Engineering,78000,grace@example.com
+10,Henry Taylor,34,Sales,74000,henry@example.com

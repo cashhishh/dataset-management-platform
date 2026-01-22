@@ -1,42 +1,29 @@
 # Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-.venv/
-env/
-
-# Database
-*.db
-*.sqlite
+*.py[cod]
 *.sqlite3
+*.db
+.env
+.venv/
+venv/
 
-# Uploads & runtime data
+# Backend uploads & local data
 backend/uploads/
-
-# Test / sample data
-backend/sample_data.csv
-backend/test_sample.csv
+backend/*.db
 
 # Node
 node_modules/
 dist/
+dist-ssr/
 
-# OS
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# OS / Editor
 .DS_Store
-Thumbs.db
-
-# Python
-backend/venv/
-backend/.venv/
-
-# Env files
-backend/.env
-backend/.env.production
-
-# Uploads
-backend/uploads/
-
-# Node
-node_modules/
-dist/
+.vscode/
+.idea/

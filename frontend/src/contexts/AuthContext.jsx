@@ -32,10 +32,16 @@ export function AuthProvider({ children }) {
     rehydrateAuth()
   }, [])
 
+  const logout = () => {
+    localStorage.removeItem('token')
+    setUser(null)
+  }
+
   const value = {
     user,
     authLoading,
-    setUser
+    setUser,
+    logout
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

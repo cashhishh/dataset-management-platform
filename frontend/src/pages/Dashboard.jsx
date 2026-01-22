@@ -1,10 +1,12 @@
 import { useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { authAPI } from '../services/api'
+import { useAuth } from '../contexts/AuthContext'
 import Footer from '../components/Footer'
 
 function Dashboard() {
   const navigate = useNavigate()
+  const { logout } = useAuth()
   const [user, setUser] = useState(null)
   const [menuOpen, setMenuOpen] = useState(false)
 
@@ -18,8 +20,8 @@ function Dashboard() {
   }, [navigate])
 
   const handleLogout = () => {
-    localStorage.removeItem('token')
-    navigate('/')
+    logout()
+    navigate('/login')
   }
 
   return (

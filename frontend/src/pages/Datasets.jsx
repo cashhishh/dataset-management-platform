@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { datasetAPI } from '../services/api'
+import { useAuth } from '../contexts/AuthContext'
 import Footer from '../components/Footer'
 
 function Datasets() {
   const navigate = useNavigate()
+  const { logout } = useAuth()
   const [datasets, setDatasets] = useState([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
@@ -144,8 +146,8 @@ function Datasets() {
   }
 
   const handleLogout = () => {
-    localStorage.removeItem('token')
-    navigate('/')
+    logout()
+    navigate('/login')
   }
 
   return (

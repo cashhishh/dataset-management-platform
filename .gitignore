@@ -3,26 +3,40 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.env
-venv/
-.env.*
+.venv/
+env/
 
 # Database
 *.db
 *.sqlite
 *.sqlite3
 
+# Uploads & runtime data
+backend/uploads/
+
+# Test / sample data
+backend/sample_data.csv
+backend/test_sample.csv
+
+# Node
+node_modules/
+dist/
+
 # OS
 .DS_Store
 Thumbs.db
 
-# Editor
-.vscode/
-.idea/
+# Python
+backend/venv/
+backend/.venv/
 
-# Logs
-*.log
+# Env files
+backend/.env
+backend/.env.production
+
+# Uploads
+backend/uploads/
 
 # Node
 node_modules/
-frontend/node_modules/
+dist/

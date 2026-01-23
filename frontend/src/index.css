@@ -1,3 +1,26 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer utilities {
+  /* Hide scrollbar for Chrome, Safari and Opera */
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  
+  /* Hide scrollbar for IE, Edge and Firefox */
+  .scrollbar-hide {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+  
+  /* Smooth scrolling for horizontal tabs */
+  .scroll-smooth {
+    scroll-behavior: smooth;
+  }
+}
+
+/* Ensure body doesn't overflow horizontally */
+body {
+  overflow-x: hidden;
+}

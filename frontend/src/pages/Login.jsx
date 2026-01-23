@@ -78,7 +78,7 @@ function Login() {
       } else if (err.response?.status === 404) {
         setError('No account found with this email.')
       } else if (err.response?.status === 500) {
-        setError('Server error. Please try again later.')
+        setError('Server error. Please try again.')
       } else {
         setError(err.response?.data?.detail || 'Login failed. Please check your credentials.')
       }

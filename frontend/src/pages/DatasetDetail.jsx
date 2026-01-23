@@ -4,6 +4,8 @@ import { datasetAPI } from '../services/api'
 import Footer from '../components/Footer'
 import AdvancedQualityReport from '../components/AdvancedQualityReport'
 import DataProfiling from '../components/DataProfiling'
+import DatasetVersions from '../components/DatasetVersions'
+import QualityRules from '../components/QualityRules'
 
 function DatasetDetail() {
   const { id } = useParams()
@@ -104,7 +106,9 @@ function DatasetDetail() {
     { id: 'quality', label: 'Quality Report', icon: '✅' },
     { id: 'advanced-quality', label: 'Advanced Quality', icon: '🔬' },
     { id: 'profiling', label: 'Data Profiling', icon: '📈' },
-    { id: 'schema', label: 'Schema', icon: '📋' }
+    { id: 'schema', label: 'Schema', icon: '📋' },
+    { id: 'versions', label: 'Versions', icon: '🔄' },
+    { id: 'rules', label: 'Quality Rules', icon: '📏' }
   ]
 
   return (
@@ -182,22 +186,25 @@ function DatasetDetail() {
           </div>
         </div>
 
-        {/* Desktop tabs */}
-        <div className="hidden gap-2 mb-8 sm:flex">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-6 py-3 rounded-xl font-medium transition-all whitespace-nowrap ${
-                activeTab === tab.id
-                  ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-500/50'
-                  : 'bg-white/10 text-gray-300 hover:bg-white/15'
-              }`}
-            >
-              <span className="mr-2">{tab.icon}</span>
-              {tab.label}
-            </button>
-          ))}
+        {/* Desktop tabs - Horizontal scrollable on small/medium screens */}
+        <div className="hidden mb-8 -mx-4 sm:block sm:mx-0">
+          <div className="flex gap-2 px-4 overflow-x-auto sm:px-0 scrollbar-hide">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-4 py-3 rounded-xl font-medium transition-all whitespace-nowrap flex-shrink-0 ${
+                  activeTab === tab.id
+                    ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-500/50'
+                    : 'bg-white/10 text-gray-300 hover:bg-white/15'
+                }`}
+              >
+                <span className="mr-2">{tab.icon}</span>
+                <span className="hidden md:inline">{tab.label}</span>
+                <span className="md:hidden">{tab.icon}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         {activeTab === 'overview' && (
@@ -254,35 +261,33 @@ function DatasetDetail() {
           <div className="w-full p-4 border sm:p-6 bg-white/10 backdrop-blur-md rounded-2xl border-white/20">
             <h2 className="mb-4 text-xl font-bold text-white sm:text-2xl sm:mb-6">Data Preview</h2>
             {preview?.rows && Array.isArray(preview.rows) && preview.rows.length > 0 ? (
-              <div className="-mx-4 overflow-x-auto sm:mx-0">
+              <div className="w-full overflow-x-auto -mx-4 sm:mx-0 sm:rounded-lg">
                 <div className="inline-block min-w-full align-middle">
-                  <div className="overflow-hidden">
-                    <table className="min-w-full text-xs sm:text-sm">
-                      <thead>
-                        <tr className="border-b border-white/20">
-                          {preview.columns?.map((col, idx) => (
-                            <th key={idx} className="px-2 py-3 font-semibold text-left text-gray-300 whitespace-nowrap sm:px-4">
-                              {col}
-                            </th>
+                  <table className="min-w-full text-xs sm:text-sm">
+                    <thead>
+                      <tr className="border-b border-white/20">
+                        {preview.columns?.map((col, idx) => (
+                          <th key={idx} className="px-3 py-3 font-semibold text-left text-gray-300 whitespace-nowrap sm:px-4">
+                            {col}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {preview.rows.map((row, rowIdx) => (
+                        <tr key={rowIdx} className="transition-colors border-b border-white/10 hover:bg-white/5">
+                          {preview.columns?.map((col, colIdx) => (
+                            <td key={colIdx} className="px-3 py-3 text-white whitespace-nowrap sm:px-4">
+                              {row[col] !== null && row[col] !== undefined 
+                                ? String(row[col]) 
+                                : <span className="italic text-gray-500">null</span>
+                              }
+                            </td>
                           ))}
                         </tr>
-                      </thead>
-                      <tbody>
-                        {preview.rows.map((row, rowIdx) => (
-                          <tr key={rowIdx} className="transition-colors border-b border-white/10 hover:bg-white/5">
-                            {preview.columns?.map((col, colIdx) => (
-                              <td key={colIdx} className="px-2 py-3 text-white whitespace-nowrap sm:px-4">
-                                {row[col] !== null && row[col] !== undefined 
-                                  ? String(row[col]) 
-                                  : <span className="italic text-gray-500">null</span>
-                                }
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             ) : (
@@ -407,6 +412,18 @@ function DatasetDetail() {
                 <p className="text-gray-400">No schema information available</p>
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'versions' && (
+          <div className="w-full">
+            <DatasetVersions />
+          </div>
+        )}
+
+        {activeTab === 'rules' && (
+          <div className="w-full">
+            <QualityRules />
           </div>
         )}
       </main>

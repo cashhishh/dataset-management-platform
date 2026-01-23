@@ -49,7 +49,41 @@ export const datasetAPI = {
   getQuality: (id) => api.get(`/datasets/${id}/quality`),
   getAdvancedQuality: (id) => api.get(`/datasets/${id}/advanced-quality`),
   getProfile: (id) => api.get(`/datasets/${id}/profile`),
-  delete: (id) => api.delete(`/datasets/${id}`)
+  delete: (id) => api.delete(`/datasets/${id}`),
+  
+  // Versioning
+  getVersions: (id) => api.get(`/datasets/${id}/versions/`),
+  uploadVersion: (id, formData) => api.post(`/datasets/${id}/versions/`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  getVersion: (id, versionNum) => api.get(`/datasets/${id}/versions/${versionNum}`),
+  compareVersions: (id, v1, v2) => api.get(`/datasets/${id}/versions/compare/${v1}/${v2}`),
+  deleteVersion: (id, versionNum) => api.delete(`/datasets/${id}/versions/${versionNum}`),
+  
+  // Quality Rules
+  getQualityRules: (id, activeOnly = true) => api.get(`/datasets/${id}/rules/`, { params: { active_only: activeOnly } }),
+  createQualityRule: (id, ruleData) => api.post(`/datasets/${id}/rules/`, ruleData),
+  deleteQualityRule: (datasetId, ruleId) => api.delete(`/datasets/${datasetId}/rules/${ruleId}`),
+  toggleQualityRule: (datasetId, ruleId, isActive) => api.post(`/datasets/${datasetId}/rules/${ruleId}/toggle`, null, { params: { is_active: isActive } }),
+  validateQualityRules: (id) => api.post(`/datasets/${id}/rules/validate`),
+  
+  // Sharing
+  shareDataset: (id, shareData) => api.post(`/datasets/${id}/shares/`, shareData),
+  getShares: (id) => api.get(`/datasets/${id}/shares/`),
+  getSharedWithMe: () => api.get('/datasets/0/shares/shared-with-me'),
+  revokeShare: (datasetId, shareId) => api.delete(`/datasets/${datasetId}/shares/${shareId}`),
+  
+  // Export
+  exportQualityJSON: (id) => api.get(`/datasets/${id}/export/quality/json`, { responseType: 'blob' }),
+  exportQualityCSV: (id) => api.get(`/datasets/${id}/export/quality/csv`, { responseType: 'blob' })
+}
+
+// Background Tasks API
+export const taskAPI = {
+  createTask: (taskData) => api.post('/tasks/', taskData),
+  getTask: (taskId) => api.get(`/tasks/${taskId}`),
+  getUserTasks: (limit = 50) => api.get('/tasks/', { params: { limit } }),
+  cancelTask: (taskId) => api.delete(`/tasks/${taskId}`)
 }
 
 export default api
